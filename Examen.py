@@ -7,7 +7,6 @@ st.title("Resultados Electorales ONPE 2021")
 st.write("Análisis de la Segunda Elección Presidencial 2021 - Resultados por mesa")
 st.write("Alumno: Rolando Roller Veliz")
 
-# Cargar datos
 archivo = "ONPE_2021.csv"
 
 @st.cache_data
@@ -17,7 +16,6 @@ def cargar_datos():
     except:
         df = pd.read_csv(archivo, encoding="latin1")
 
-    # Limpieza básica: convertir columnas de votos a numérico
     columnas_votos = ["VOTOS_PERU_LIBRE", "VOTOS_FUERZA_POPULAR", "VOTOS_VALIDOS", "VOTOS_NULOS", "VOTOS_BLANCOS"]
     for col in columnas_votos:
         if col in df.columns:
@@ -26,18 +24,26 @@ def cargar_datos():
 
 df = cargar_datos()
 
-# Mostrar información general
 st.subheader("Información general")
 col1, col2, col3 = st.columns(3)
-col1.metric("Total de mesas", len(df))
+col1.metric("Total de mesas", f"{len(df):,}")
 col2.metric("Total de columnas", df.shape[1])
 col3.metric("Valores nulos", df.isnull().sum().sum())
 
-# Vista previa
+col4, col5, col6 = st.columns(3)
+col4.metric("Votos Perú Libre (Castillo)", f"{df['VOTOS_PERU_LIBRE'].sum():,}")
+col5.metric("Votos Fuerza Popular (Fujimori)", f"{df['VOTOS_FUERZA_POPULAR'].sum():,}")
+col6.metric("Total votos válidos", f"{df['VOTOS_VALIDOS'].sum():,}")
+
+col7, col8, col9 = st.columns(3)
+col7.metric("Votos en blanco", f"{df['VOTOS_BLANCOS'].sum():,}")
+col8.metric("Votos nulos", f"{df['VOTOS_NULOS'].sum():,}")
+col9.metric("Departamentos", df['DEPARTAMENTO'].nunique())
+
 st.subheader("Vista previa de los datos")
 st.dataframe(df.head(20), use_container_width=True)
 
-# Selección de columna para filtro
+# ── FILTROS SIDEBAR ───────────────────────────────────────────────────────────
 st.sidebar.header("Filtros")
 columna_filtro = st.sidebar.selectbox("Selecciona una columna para filtrar", df.columns)
 valores = df[columna_filtro].dropna().astype(str).unique().tolist()
@@ -48,7 +54,6 @@ valor_seleccionado = st.sidebar.multiselect(
     default=valores[:5] if len(valores) > 5 else valores
 )
 
-# Aplicar filtro
 if valor_seleccionado:
     df_filtrado = df[df[columna_filtro].astype(str).isin(valor_seleccionado)]
 else:
@@ -57,48 +62,32 @@ else:
 st.subheader("Datos filtrados")
 st.dataframe(df_filtrado, use_container_width=True)
 
-# ── Gráficos por columna categórica ───────────────────────────────────────────
+# ── Gráficos dinámicos ────────────────────────────────────────────────────────
 st.subheader("Gráficos")
 columna_grafico = st.selectbox("Selecciona una columna para analizar", df_filtrado.columns)
 conteo = df_filtrado[columna_grafico].astype(str).value_counts().reset_index()
 conteo.columns = [columna_grafico, "Cantidad"]
 
 colA, colB = st.columns(2)
-
 with colA:
     st.write("Gráfico de barras")
-    fig_bar = px.bar(
-        conteo.head(10),
-        x=columna_grafico,
-        y="Cantidad",
-        text_auto=True
-    )
+    fig_bar = px.bar(conteo.head(10), x=columna_grafico, y="Cantidad", text_auto=True)
     st.plotly_chart(fig_bar, use_container_width=True)
 
 with colB:
     st.write("Gráfico circular")
-    fig_pie = px.pie(
-        conteo.head(10),
-        names=columna_grafico,
-        values="Cantidad"
-    )
+    fig_pie = px.pie(conteo.head(10), names=columna_grafico, values="Cantidad")
     st.plotly_chart(fig_pie, use_container_width=True)
 
-# ── Comparación de votos por candidato ────────────────────────────────────────
-st.subheader("Comparación de votos por candidato")
-
-candidatos = ["VOTOS_PERU_LIBRE", "VOTOS_FUERZA_POPULAR"]
-nombres_candidatos = ["Pedro Castillo (Perú Libre)", "Keiko Fujimori (Fuerza Popular)"]
-votos_totales = []
-for c in candidatos:
-    if c in df_filtrado.columns:
-        votos_totales.append(df_filtrado[c].sum())
-    else:
-        votos_totales.append(0)
+# ── PARTE 3: Barras — votos por candidato ─────────────────────────────────────
+st.subheader("Votos por candidato")
 
 df_candidatos = pd.DataFrame({
-    "Candidato": nombres_candidatos,
-    "Votos": votos_totales
+    "Candidato": ["Pedro Castillo (Perú Libre)", "Keiko Fujimori (Fuerza Popular)"],
+    "Votos": [
+        df_filtrado["VOTOS_PERU_LIBRE"].sum(),
+        df_filtrado["VOTOS_FUERZA_POPULAR"].sum()
+    ]
 })
 
 fig_candidatos = px.bar(
@@ -111,20 +100,37 @@ fig_candidatos = px.bar(
 )
 st.plotly_chart(fig_candidatos, use_container_width=True)
 
-# ── Distribución votos válidos / nulos / blancos ─────────────────────────────
-st.subheader("Distribución de votos válidos, nulos y blancos")
+# ── PARTE 3: Distribución de votos por región ─────────────────────────────────
+st.subheader("Distribución de votos por región")
 
-tipos_voto = ["VOTOS_VALIDOS", "VOTOS_NULOS", "VOTOS_BLANCOS"]
-totales_voto = []
-for t in tipos_voto:
-    if t in df_filtrado.columns:
-        totales_voto.append(df_filtrado[t].sum())
-    else:
-        totales_voto.append(0)
+df_region = df_filtrado.groupby("DEPARTAMENTO")[["VOTOS_PERU_LIBRE", "VOTOS_FUERZA_POPULAR"]].sum().reset_index()
+df_region = df_region.sort_values("VOTOS_PERU_LIBRE", ascending=False)
+
+fig_region = px.bar(
+    df_region,
+    x="DEPARTAMENTO",
+    y=["VOTOS_PERU_LIBRE", "VOTOS_FUERZA_POPULAR"],
+    title="Votos por departamento",
+    labels={"value": "Votos", "variable": "Candidato"},
+    barmode="group",
+    color_discrete_map={
+        "VOTOS_PERU_LIBRE": "#E63946",
+        "VOTOS_FUERZA_POPULAR": "#F4A261"
+    }
+)
+fig_region.update_xaxes(tickangle=45)
+st.plotly_chart(fig_region, use_container_width=True)
+
+# ── PARTE 3: Comparación de resultados ───────────────────────────────────────
+st.subheader("Comparación de resultados")
 
 df_tipos = pd.DataFrame({
-    "Tipo": tipos_voto,
-    "Cantidad": totales_voto
+    "Tipo": ["Votos Válidos", "Votos Nulos", "Votos Blancos"],
+    "Cantidad": [
+        df_filtrado["VOTOS_VALIDOS"].sum(),
+        df_filtrado["VOTOS_NULOS"].sum(),
+        df_filtrado["VOTOS_BLANCOS"].sum()
+    ]
 })
 
 fig_tipos = px.pie(
@@ -135,7 +141,7 @@ fig_tipos = px.pie(
 )
 st.plotly_chart(fig_tipos, use_container_width=True)
 
-# ── Histograma: distribución de votos por mesa ───────────────────────────────
+# ── Histograma ────────────────────────────────────────────────────────────────
 st.subheader("Histograma — Distribución de votos por mesa")
 
 if "VOTOS_VALIDOS" in df_filtrado.columns:
